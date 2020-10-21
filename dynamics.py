@@ -1,2 +1,3 @@
-print("hello world")
-t=0
+import numpy as np
+
+x = "does this work
