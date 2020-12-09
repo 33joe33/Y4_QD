@@ -1,34 +1,83 @@
 import matplotlib
 import numpy as np
+from scipy.linalg import expm
+import matplotlib.pyplot as plt
 import matplotlib.pyplot as plt
 
-sigma_1 = np.array([[0,1],[1,0]])
-sigma_2 = np.array([[0,-1.j],[1.j,0]])
-sigma_3 = np.array([[1,0],[0,-1]])
+sigma_1 = np.array([[0, 1], [1, 0]])
+sigma_2 = np.array([[0, -1.j], [1.j, 0]])
+sigma_3 = np.array([[1, 0], [0, -1]])
+
 gamma = 1
-B=1
-k_b =1
-T=1
-class densitiy_operator:
-    def __init__(self, matrix):
-        self.D_O = matrix
+B = 1
+k_b = 1
+T = 1
+beta = 1 / (k_b * T)
 
 
-##########################################################
-# 1 spin 1/2 particle
+def create_operator(operators):
+    # create operator for multi particle states
+    New_operator = 1
+    for operator in operators:
+        New_operator = np.kron(New_operator, operator)
+    return New_operator
 
-onep =densitiy_operator(np.array([[0.5, 0],[0,0.5]]))
-print( '1 spin 1/2 particle polarisation'+str(np.trace(onep.D_O*sigma_3)))
-############################################################
-#2 state spin1/2 ensemble
-ensemble=densitiy_operator(np.array([[np.exp((gamma*B)/(2*k_b*T)),0],[0,np.exp(-(gamma*B)/(2*k_b*T))]]))
-print('2 state spin1/2 ensemble '+str(np.trace(ensemble.D_O*sigma_3)))
-############################################################
+class system:
 
-# 2 spin 1/2 particles
-sigma_3_2 =np.array([[1,0,0,0],[0,-1,0,0],[0,0,1,0],[0,0,0,-1]])
-twop =densitiy_operator(np.array([[0.25,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0.25]]))
-print('2 spin 1/2 particles '+str(np.trace(twop.D_O*sigma_3_2)))
-###########################################################################
-# do i just put time evolution in the density operator ?
 
+    def Com(self, A, B):
+        return np.dot(A, B) - np.dot(B, A)
+
+    sigma = [np.array([[0, 1], [1, 0]]), np.array([[0, -1.j], [1.j, 0]]), np.array([[1, 0], [0, -1]])]
+
+    # set pauli matrices
+    def __init__(self, Hamiltonian=B * create_operator([sigma[2]])):
+        self.Hamiltonian = Hamiltonian
+        # self.Density_Operator = np.array(0.5*np.identity(2) +0.5*B*self.sigma[2])
+        self.Density_Operator = np.array(expm(beta * Hamiltonian))
+        self.Density_Operator = self.Density_Operator / np.sum(self.Density_Operator)
+
+    def rotation(self, theta):
+        # TODO: work out how to rotate
+        # general rotation about all axis x=0, y=1 and z =2
+        R = np.array([[np.cos(theta[2]) * np.cos(theta[1]),
+                       np.cos(theta[2]) * np.sin(theta[1]) * np.sin(theta[0]) - np.sin(theta[2]) * np.cos(theta[0]),
+                       np.cos(theta[2]) * np.sin(theta[1]) * np.cos(theta[0]) - np.sin(theta[2]) * np.sin(theta[0])],
+
+                      [np.sin(theta[2]) * np.cos(theta[1]),
+                       np.sin(theta[2]) * np.sin(theta[1]) * np.sin(theta[0]) + np.cos(theta[2]) * np.cos(theta[0]),
+                       np.sin(theta[2]) * np.sin(theta[1]) * np.cos(theta[0]) - np.cos(theta[2]) * np.sin(theta[0])],
+
+                      [-np.sin(theta[1]), np.cos(theta[1]) * np.sin(theta[0]), np.cos(theta[1]) * np.cos(theta[0])]])
+        return R
+
+    def rotating_frame(self):
+        pass
+
+    def Time_evolution(self, Operator):
+        temp_op = Operator
+        time_evolution_list= []
+        # TODO: append a operator thing
+        delta_t = 0.1
+        T = np.arange(0, 100, 0.1)
+        for t in T:
+            temp_op = expm(1.j * self.Hamiltonian * delta_t) * temp_op * expm(-1.j * self.Hamiltonian * delta_t)
+            time_evolution_list.append(self.expectation_value(temp_op))
+
+        plt.plot(T,time_evolution_list)
+        plt.show()
+
+    def expectation_value(self, Operator):
+        return (np.trace(np.dot(Operator, self.Density_Operator)))
+    def Change_Hamiltonian(self, New_Hamiltonian):
+        self.Hamiltonian=New_Hamiltonian
+
+x = system()
+
+x.Time_evolution(x.sigma[2])
+x.Time_evolution(x.sigma[1])
+x.Change_Hamiltonian(B * create_operator([x.sigma[0]]))
+x.Time_evolution(x.sigma[1])
+# print(x.Density_Operator)
+# print(x.expectation_value(x.sigma[2]))
+# x.Time_evolution(x.sigma[1]
