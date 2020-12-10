@@ -2,7 +2,7 @@ import matplotlib
 import numpy as np
 from scipy.linalg import expm
 import matplotlib.pyplot as plt
-import matplotlib.pyplot as plt
+
 
 sigma_1 = np.array([[0, 1], [1, 0]])
 sigma_2 = np.array([[0, -1.j], [1.j, 0]])
@@ -58,14 +58,14 @@ class system:
         temp_op = Operator
         time_evolution_list= []
         # TODO: append a operator thing
-        delta_t = 0.1
-        T = np.arange(0, 100, 0.1)
+        delta_t = 0.01
+        T = np.arange(0, np.pi, delta_t)
         for t in T:
-            temp_op = expm(1.j * self.Hamiltonian * delta_t) * temp_op * expm(-1.j * self.Hamiltonian * delta_t)
+            temp_op = np.dot(expm(1.j * self.Hamiltonian * delta_t), np.dot(temp_op,expm(-1.j * self.Hamiltonian * delta_t)))
             time_evolution_list.append(self.expectation_value(temp_op))
 
         plt.plot(T,time_evolution_list)
-        plt.show()
+
 
     def expectation_value(self, Operator):
         return (np.trace(np.dot(Operator, self.Density_Operator)))
@@ -75,9 +75,13 @@ class system:
 x = system()
 
 x.Time_evolution(x.sigma[2])
-x.Time_evolution(x.sigma[1])
+
 x.Change_Hamiltonian(B * create_operator([x.sigma[0]]))
+x.Time_evolution(x.sigma[2])
 x.Time_evolution(x.sigma[1])
+plt.title("precession in magnetic field along x axis")
+plt.legend(["I_z ","I_z' ","I_y'"])
+plt.show()
 # print(x.Density_Operator)
 # print(x.expectation_value(x.sigma[2]))
 # x.Time_evolution(x.sigma[1]
