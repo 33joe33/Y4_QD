@@ -3,7 +3,7 @@ import scipy.linalg as linalg
 import matplotlib.pyplot as plt
 
 class system:
-    def __init__(self, w):
+    def __init__(self, w, w_mw):
         "Define Pauli matrices"
         self.sigma_0 = np.array([[1, 0], [0, 1]])
         self.sigma_1 = np.array([[0, 1], [1, 0]])
@@ -16,10 +16,10 @@ class system:
         self.p_m = self.pauli[1] - 1.j*self.pauli[2]
         
         "Define microwave and electron offset frequencies"
-        w_mw = w_e - w_n
         w_off = w_e - w_mw
-        w_1 = 1e6
-        C = 1e6
+        print(w_off)
+        w_1 = 2* np.pi * 0.85e6
+        C = 3e6
 
         "Define Hamiltonian in electron rotating frame"
         self.H_z =  w_off * np.kron(self.pauli[3],self.pauli[0]) - w_n * np.kron(self.pauli[0],self.pauli[3]) # background z field
@@ -32,7 +32,10 @@ class system:
         self.H_MW = w_1 * np.kron(self.pauli[1],self.pauli[0]) #microwave field 
 
         "Diagonalise Hamiltonian"
-        self.eigval,self.eigvec = linalg.eig(self.Hamiltonian)
+        eigval,eigvec = linalg.eig(self.Hamiltonian)
+        idx = eigval.argsort()[::-1]
+        self.eigval = eigval[idx]
+        self.eigvec = eigvec[:,idx]
         self.eigvec_i = linalg.inv(self.eigvec)
 
         "Convert full Hamiltonian to new basis"
@@ -40,7 +43,7 @@ class system:
         
         "Define density operator and convert to Hamiltonian basis"
         self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[3],self.pauli[0]) + np.kron(self.pauli[0],self.pauli[3]))
-        self.Denisty_Operator = self.diag(self.Density_Operator)
+        self.Density_Operator = self.diag(self.Density_Operator)
 
         "Convert principle x,y,z Pauli matrices to Hamiltonian basis"
         self.S,self.I = [0,0,0,0],[0,0,0,0]
@@ -78,12 +81,12 @@ class system:
             "Time evolve density operator"
             self.Density_Operator = linalg.expm(1.j *self.Hamiltonian*delta_t) @ self.Density_Operator @ linalg.expm(-1.j *self.Hamiltonian*delta_t)
 
-            
            
         "Calculate total magnetisation"
         M_e[0,:] = ((M_e[1,:]**2)+(M_e[2,:]**2)+(M_e[3,:]**2))**0.5
         M_e = -M_e
         M_n[0,:] = ((M_n[1,:]**2)+(M_n[2,:]**2)+(M_n[3,:]**2))**0.5
+        
 
         "Plot x,y,z and total magnetisations for nucleus and electron"
         fige, ((axe1, axe2), (axe3, axe4)) = plt.subplots(2, 2)
@@ -119,13 +122,27 @@ class system:
         axn4.plot(T, M_n[0, :], 'r')
         axn4.set(xlabel='t', ylabel='M')
 
-        #fige.savefig('E')
-        #fign.savefig('N')
+        "calculate and plot fourier transform"
+        #yf = np.fft.fft(M_e[1,:])
+        #freq = np.fft.fftfreq(len(yf))
+        #fig, ax = plt.subplots()
+        #ax.plot(freq[:N//2], 2.0/N * np.abs(yf[:N//2]))
+        #plt.show()
+        fige.savefig('E')
+        fign.savefig('N')
 
 "electron and nuclear Larmor frequencies"
-w_e, w_n = 395e9, 600e6
+w_e, w_n = 263e9, 400e6
+w_mw = w_e - w_n
 w = np.array([w_e,w_n])
 
 "run system"
-x = system(w)
+x = system(w, w_mw)
 x.evolve()
+
+    
+    
+    
+
+
+
