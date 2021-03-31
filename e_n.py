@@ -3,7 +3,7 @@ import scipy.linalg as linalg
 import matplotlib.pyplot as plt
 
 class system:
-    def __init__(self, w, w_mw):
+    def __init__(self, w):
         "Define Pauli matrices"
         self.sigma_0 = np.array([[1, 0], [0, 1]])
         self.sigma_1 = np.array([[0, 1], [1, 0]])
@@ -16,20 +16,18 @@ class system:
         self.p_m = self.pauli[1] - 1.j*self.pauli[2]
         
         "Define microwave and electron offset frequencies"
-        w_off = w_e - w_mw
-        print(w_off)
         w_1 = 2* np.pi * 0.85e6
         C = 3e6
 
         "Define Hamiltonian in electron rotating frame"
-        self.H_z =  w_off * np.kron(self.pauli[3],self.pauli[0]) - w_n * np.kron(self.pauli[0],self.pauli[3]) # background z field
+        self.H_z =  w[0] * np.kron(self.pauli[3],self.pauli[0]) - w[1] * np.kron(self.pauli[0],self.pauli[3]) # background z field
 
         self.H_hf = C * np.kron(self.pauli[3],self.p_p) + np.conj(C) * np.kron(self.pauli[3],self.p_m) # hyperfine coupling
 
         self.Hamiltonian = self.H_z + self.H_hf # H0
         
-        "Define microwave Hamiltonian in electron rotating frame"
-        self.H_MW = w_1 * np.kron(self.pauli[1],self.pauli[0]) #microwave field 
+        "Define microwave Hamiltonian"
+        self.H_MW = w_1 * np.kron(self.pauli[1],self.pauli[0]) # microwave field 
 
         "Diagonalise Hamiltonian"
         eigval,eigvec = linalg.eig(self.Hamiltonian)
@@ -37,14 +35,21 @@ class system:
         self.eigval = eigval[idx]
         self.eigvec = eigvec[:,idx]
         self.eigvec_i = linalg.inv(self.eigvec)
-
+        
         "Convert full Hamiltonian to new basis"
         self.Hamiltonian = self.diag(self.Hamiltonian) + self.diag(self.H_MW)
         
         "Define density operator and convert to Hamiltonian basis"
-        self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[3],self.pauli[0]) + np.kron(self.pauli[0],self.pauli[3]))
+        #self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[3],self.pauli[0]) + np.kron(self.pauli[0],self.pauli[3]))
+        #self.Density_Operator = self.diag(self.Density_Operator)
+        hbar = 1.054e-34
+        k_b = 1.38e-23
+        T = 300
+        beta = (hbar * w) / (k_b * T) 
+        self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[0],self.pauli[0]) + beta[0]\
+            * np.kron(self.pauli[3],self.pauli[0]) + beta[1] * np.kron(self.pauli[0],self.pauli[3]))
         self.Density_Operator = self.diag(self.Density_Operator)
-
+        
         "Convert principle x,y,z Pauli matrices to Hamiltonian basis"
         self.S,self.I = [0,0,0,0],[0,0,0,0]
         for a in[0,1,2,3]:
@@ -122,27 +127,18 @@ class system:
         axn4.plot(T, M_n[0, :], 'r')
         axn4.set(xlabel='t', ylabel='M')
 
-        "calculate and plot fourier transform"
-        #yf = np.fft.fft(M_e[1,:])
-        #freq = np.fft.fftfreq(len(yf))
-        #fig, ax = plt.subplots()
-        #ax.plot(freq[:N//2], 2.0/N * np.abs(yf[:N//2]))
-        #plt.show()
-        fige.savefig('E')
-        fign.savefig('N')
-
 "electron and nuclear Larmor frequencies"
 w_e, w_n = 263e9, 400e6
-w_mw = w_e - w_n
-w = np.array([w_e,w_n])
+
+"Microwave frequency and electron offset"
+w_mw = w_e + w_n
+w_off = w_e - w_mw
+w = np.array([w_off,w_n])
 
 "run system"
-x = system(w, w_mw)
+x = system(w)
 x.evolve()
 
-    
-    
-    
 
 
 
