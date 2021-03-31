@@ -3,7 +3,7 @@ import scipy.linalg as linalg
 import matplotlib.pyplot as plt
 
 class system:
-    def __init__(self, w):
+    def __init__(self, w_e, w_n, n):
         "Define Pauli matrices"
         self.sigma_0 = np.array([[1, 0], [0, 1]])
         self.sigma_1 = np.array([[0, 1], [1, 0]])
@@ -16,11 +16,13 @@ class system:
         self.p_m = self.pauli[1] - 1.j*self.pauli[2]
         
         "Define microwave and electron offset frequencies"
+        w_mw = w_e +1* w_n
+        w_off = w_e - w_mw
         w_1 = 2* np.pi * 0.85e6
         C = 3e6
 
         "Define Hamiltonian in electron rotating frame"
-        self.H_z =  w[0] * np.kron(self.pauli[3],self.pauli[0]) - w[1] * np.kron(self.pauli[0],self.pauli[3]) # background z field
+        self.H_z =  w_off * np.kron(self.pauli[3],self.pauli[0]) - w_n * np.kron(self.pauli[0],self.pauli[3]) # background z field
 
         self.H_hf = C * np.kron(self.pauli[3],self.p_p) + np.conj(C) * np.kron(self.pauli[3],self.p_m) # hyperfine coupling
 
@@ -30,24 +32,19 @@ class system:
         self.H_MW = w_1 * np.kron(self.pauli[1],self.pauli[0]) # microwave field 
 
         "Diagonalise Hamiltonian"
-        eigval,eigvec = linalg.eig(self.Hamiltonian)
-        idx = eigval.argsort()[::-1]
-        self.eigval = eigval[idx]
-        self.eigvec = eigvec[:,idx]
+        self.eigval,self.eigvec = linalg.eig(self.Hamiltonian)
         self.eigvec_i = linalg.inv(self.eigvec)
         
         "Convert full Hamiltonian to new basis"
         self.Hamiltonian = self.diag(self.Hamiltonian) + self.diag(self.H_MW)
         
         "Define density operator and convert to Hamiltonian basis"
-        #self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[3],self.pauli[0]) + np.kron(self.pauli[0],self.pauli[3]))
-        #self.Density_Operator = self.diag(self.Density_Operator)
         hbar = 1.054e-34
         k_b = 1.38e-23
-        T = 300
-        beta = (hbar * w) / (k_b * T) 
-        self.Density_Operator = (0.5**len(w)) * (np.kron(self.pauli[0],self.pauli[0]) + beta[0]\
-            * np.kron(self.pauli[3],self.pauli[0]) + beta[1] * np.kron(self.pauli[0],self.pauli[3]))
+        T = 100
+        beta = (hbar * w_e) / (k_b * T) 
+        p_0 = np.tanh(beta/2)
+        self.Density_Operator = (0.5**n) * (np.kron(self.pauli[0],self.pauli[0]) - 2 * p_0 * np.kron(self.pauli[3],self.pauli[0]))
         self.Density_Operator = self.diag(self.Density_Operator)
         
         "Convert principle x,y,z Pauli matrices to Hamiltonian basis"
@@ -56,7 +53,7 @@ class system:
             self.S[a] = self.diag(np.kron(self.pauli[a],self.pauli[0]))
             self.I[a] = self.diag(np.kron(self.pauli[0],self.pauli[a]))
 
-            
+        self.E_init = np.trace(self.S[3] @ self.Density_Operator)
             
     "Convert an operator to basis of diagonalised Hamiltonian"
     def diag(self, operator):
@@ -78,18 +75,18 @@ class system:
         M_e, M_n = np.zeros([4, T.size]), np.zeros([4, T.size])
 
         for n in range(N):
+            "Time evolve density operator"
+            self.Density_Operator = linalg.expm(1.j *self.Hamiltonian*delta_t) @ self.Density_Operator @ linalg.expm(-1.j *self.Hamiltonian*delta_t)
+            
             "Calculate x,y,z magnetisations by tracing density operator with Pauli matrices"
             for a in[1,2,3]:
                 M_e[a,n] =np.trace(self.S[a] @ self.Density_Operator)
                 M_n[a,n] =np.trace(self.I[a] @ self.Density_Operator)
                 
-            "Time evolve density operator"
-            self.Density_Operator = linalg.expm(1.j *self.Hamiltonian*delta_t) @ self.Density_Operator @ linalg.expm(-1.j *self.Hamiltonian*delta_t)
-
-           
+    
         "Calculate total magnetisation"
-        M_e[0,:] = ((M_e[1,:]**2)+(M_e[2,:]**2)+(M_e[3,:]**2))**0.5
-        M_e = -M_e
+        M_e[0,:] = -((M_e[1,:]**2)+(M_e[2,:]**2)+(M_e[3,:]**2))**0.5
+
         M_n[0,:] = ((M_n[1,:]**2)+(M_n[2,:]**2)+(M_n[3,:]**2))**0.5
         
 
@@ -129,16 +126,9 @@ class system:
 
 "electron and nuclear Larmor frequencies"
 w_e, w_n = 263e9, 400e6
-
-"Microwave frequency and electron offset"
-w_mw = w_e + w_n
-w_off = w_e - w_mw
-w = np.array([w_off,w_n])
+n = 2
 
 "run system"
-x = system(w)
+x = system(w_e, w_n, n)
 x.evolve()
-
-
-
 
