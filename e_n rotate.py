@@ -17,12 +17,21 @@ class system:
         self.p_p = self.pauli[1] + 1.j*self.pauli[2]
         self.p_m = self.pauli[1] - 1.j*self.pauli[2]
         
-        "Define g-anisotropy in lab frame"
-        self.g = np.diag([2.0061,2.0021,2.0094])
-        self.g = self.g / self.g[2,2] # define g-anisotropy relative to z
+        "Define g-anisotropy and principle-lab rotation"
+        self.g = np.diag([2.00614,2.00194,2.00988])
+        Omega = np.array([250,150,0]) * (np.pi/180)
         #Omega = np.array([253.6, 105.1, 123.8]) * (np.pi/180) # aritrary euler angles principle-lab frame
-        #self.rotate(self.g, Omega)
-        self.rotate(self.g, [np.arctan(np.sqrt(2)), 0, 0]) # rotate to magic angle???
+        self.R_Omega = Euler_Rot_Mat(Omega[0], Omega[1], Omega[2])
+        self.R_Omega_inv = Euler_Rot_Mat(-1*Omega[2], -1*Omega[1], -1*Omega[0])
+        
+        "Define scaling from g-factor to Larmor frequency"
+        g_av = np.sum(self.g) / 3
+        self.g_scale = w_e / g_av
+        
+        "Define hyperfine tensor"
+        self.A = np.diag([A_max/2, A_max/2, -A_max])
+        self.R_hyp = Euler_Rot_Mat(0, 0.25*np.pi, 0)
+        self.R_hyp_inv = Euler_Rot_Mat(0, -0.25*np.pi, 0)
         
         "Create principle x,y,z product operators"
         self.S,self.I = [0,0,0,0],[0,0,0,0]
@@ -42,16 +51,20 @@ class system:
         self.E_init = np.abs(np.trace(self.S[3] @ self.Density_Operator))
         
 
-    def create_Hamiltonian(self):
+    def create_Hamiltonian(self, g, hyp):
         "Calculate electron offset frequency"
-        w_off = w_e * self.g[2,2] - w_mw
-        
+        w_off = self.g_scale * g[2,2] - w_mw
+
+        "Extract hyperfine interaction strengths"
+        A_zz = hyp[2,2]
+        A_pm = hyp[0,2]
+
         "Define Hamiltonian in electron rotating frame"
         self.H_z =  w_off * 2 * np.kron(self.pauli[3],self.pauli[0]) - w_n * 2 * np.kron(self.pauli[0],self.pauli[3]) # background z field
 
-        self.H_hf = self.g[2,0] * C *( 2 * np.kron(self.pauli[3],self.p_p) + 2 * np.kron(self.pauli[3],self.p_m)) # hyperfine coupling
-        
-        self.Hamiltonian = self.H_z + self.H_hf # H0
+        #self.H_hf = A_zz * 2 * np.kron(self.pauli[3],self.pauli[3]) + 0.5 * A_pm *( 2 * np.kron(self.pauli[3],self.p_p) + 2 * np.kron(self.pauli[3],self.p_m)) # hyperfine coupling
+
+        self.Hamiltonian = self.H_z #+ self.H_hf # H0
         
         "Define microwave Hamiltonian"
         self.H_MW = w_1 * 2 * np.kron(self.pauli[1],self.pauli[0]) # microwave field 
@@ -61,10 +74,6 @@ class system:
         self.eigvec_i = linalg.inv(self.eigvec)
         
         self.Hamiltonian = self.diag(self.Hamiltonian) + self.diag(self.H_MW)
-        
-        "Change basis of Density operator to match Hamiltonian"
-        self.Density_Operator = self.diag(self.Density_Operator)
-
 
      
     "Convert an operator to basis of diagonalised Hamiltonian"
@@ -77,22 +86,23 @@ class system:
 
     "Rotate g-tensor through Euler angles"
     def rotate(self, operator, angle):
-        self.g = Euler_Rot_Mat(angle[0], angle[1], angle[2]) @ operator @ Euler_Rot_Mat(-1*angle[0], -1*angle[1], -1*angle[2])
+        self.g = Euler_Rot_Mat(angle[0], angle[1], angle[2]) @ operator @ Euler_Rot_Mat(-1*angle[2], -1*angle[1], -1*angle[0])
 
 
     "Time evolve density operator"
     def evolve(self):
         "Define time scale"
         N = 1000
-        End = 0.00025 #1e-7
+        End = 0.000125 #1e-7
         T = np.linspace(0, End, N)
         delta_t = End / N
-        w_g = 4e3 * 2*np.pi
+        w_r = 4e3 * 2*np.pi
         
         "Preallocate matrices for mangetisations and eigenvalues"
-        M_e, M_n = np.zeros([4, T.size]), np.zeros([4, T.size])
-        eig = np.zeros([4, T.size])
-
+        M_e, M_n = np.zeros([4, N]), np.zeros([4, N])
+        eig = np.zeros([4, N])
+        
+        t = 0 
         "Time evolve Density Operator and calculate magnetisation changes"
         for n in range(N):
             
@@ -101,10 +111,17 @@ class system:
                 M_e[a,n] =np.trace(self.S[a] @ self.Density_Operator)
                 M_n[a,n] =np.trace(self.I[a] @ self.Density_Operator)
              
+            "Create magic angle rotation matrix for current time step"
+            t += delta_t
+            R_mas = Euler_Rot_Mat(theta_m, w_r * t, 0)
+            R_mas_inv = Euler_Rot_Mat(0, -1*w_r * t, -1*theta_m)
+            
             "Rotate sample and create new Hamiltonian"
-            self.rotate(self.g, [0.0, w_g * delta_t, 0.0]) # euler angles for MAS
-            self.create_Hamiltonian() 
-  
+            g = R_mas @ self.R_Omega @ self.g @ self.R_Omega_inv @ R_mas_inv
+            hyp = R_mas @ self.R_hyp @ self.A @ self.R_hyp_inv @ R_mas_inv
+
+            self.create_Hamiltonian(g, hyp) 
+ 
             "Extract eigenvalues"
             eig[:,n] = self.eigval
                 
@@ -114,6 +131,7 @@ class system:
                 
             "Return Density Operator to Zeeman basis"
             self.Density_Operator = self.undiag(self.Density_Operator)
+            
             
                  
         "Calculate total magnetisation"
@@ -162,10 +180,10 @@ class system:
         "Plot eigenvalues of Hamiltonian"
         figeig, ax =plt.subplots(1,1)
         figeig.suptitle("Eigenvalues", fontsize=15)
-        ax.plot(T,eig[0,:])
-        ax.plot(T, eig[1, :])
-        ax.plot(T, eig[2, :])
-        ax.plot(T, eig[3, :])
+        ax.plot(T,eig[0,:], 'k')
+        ax.plot(T, eig[1, :], 'r')
+        ax.plot(T, eig[2, :], 'b')
+        ax.plot(T, eig[3, :], 'g')
         ax.set(xlabel='t', ylabel='Eigenvalues')
         
 
@@ -177,18 +195,19 @@ def Euler_Rot_Mat(alpha, beta, gamma):
     return Rot
  
 
-   
+"Define magic angle"
+theta_m = np.arctan(np.sqrt(2))
     
 "electron and nuclear angular Larmor frequencies"
 w_e, w_n = 263e9 * 2*np.pi, 400e6 * 2*np.pi
 
 "Define microwave frequency"
-a = -1
-w_mw = w_e + a * w_n
+w_mw = 263.2e9 * 2*np.pi
+
 
 "Define interaction strengths"
 w_1 = 0.85e6 * 2*np.pi
-C = 3e6 * 2*np.pi
+A_max = 3e6 * 2*np.pi
 
 "run system"
 x = system()
